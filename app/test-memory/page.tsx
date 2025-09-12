@@ -6,7 +6,7 @@ export default function TestMemoryPage() {
   const [email, setEmail] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [testMessage, setTestMessage] = useState('What did we talk about earlier?');
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -176,10 +176,10 @@ export default function TestMemoryPage() {
           <h2 className="text-xl font-semibold mb-4">How to Test:</h2>
           <ol className="list-decimal list-inside space-y-2 text-gray-300">
             <li>Go to your chat page and have a conversation with the AI</li>
-            <li>Copy your email and session ID from the browser's developer tools (Network tab)</li>
-            <li>Or use the "Get Session Info" button to see your session details</li>
-            <li>Enter a test message like "What did we talk about earlier?"</li>
-            <li>Click "Test AI Memory" to see if the AI remembers previous conversations</li>
+            <li>Copy your email and session ID from the browser&apos;s developer tools (Network tab)</li>
+            <li>Or use the &quot;Get Session Info&quot; button to see your session details</li>
+            <li>Enter a test message like &quot;What did we talk about earlier?&quot;</li>
+            <li>Click &quot;Test AI Memory&quot; to see if the AI remembers previous conversations</li>
           </ol>
         </div>
       </div>

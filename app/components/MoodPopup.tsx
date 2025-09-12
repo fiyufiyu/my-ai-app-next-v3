@@ -57,7 +57,7 @@ export default function MoodPopup({ isOpen, onClose, onSubmit }: MoodPopupProps)
               Select your current mood:
             </label>
             <div className="flex justify-between items-center">
-              {moodOptions.map((mood, index) => (
+              {moodOptions.map((mood) => (
                 <button
                   key={mood.value}
                   type="button"
@@ -84,7 +84,7 @@ export default function MoodPopup({ isOpen, onClose, onSubmit }: MoodPopupProps)
           {/* Explanation Input */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-300">
-              Tell me why you're feeling this way:
+              Tell me why you&apos;re feeling this way:
             </label>
             <textarea
               value={explanation}

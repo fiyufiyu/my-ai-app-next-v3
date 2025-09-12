@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function AdminTestPage() {
   const [email, setEmail] = useState('');
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -76,7 +76,7 @@ export default function AdminTestPage() {
         <h1 className="text-3xl font-bold mb-8">Admin Test - Continuous Session</h1>
         
         <div className="bg-gray-900 p-6 rounded-lg mb-6">
-          <h2 className="text-xl font-semibold mb-4">Test User's Continuous Session</h2>
+          <h2 className="text-xl font-semibold mb-4">Test User&apos;s Continuous Session</h2>
           
           <div className="space-y-4">
             <div>
@@ -112,7 +112,7 @@ export default function AdminTestPage() {
         <div className="mt-8 bg-gray-900 p-6 rounded-lg">
           <h2 className="text-xl font-semibold mb-4">What This Tests:</h2>
           <ul className="list-disc list-inside space-y-2 text-gray-300">
-            <li>User's continuous session information</li>
+            <li>User&apos;s continuous session information</li>
             <li>Total message count across all sessions</li>
             <li>Last 25 messages breakdown (user vs assistant)</li>
             <li>Message flow and conversation continuity</li>
