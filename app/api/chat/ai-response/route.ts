@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { getDatabase } from '@/lib/mongodb';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -7,7 +8,7 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { message } = await request.json();
+    const { message, email, sessionId } = await request.json();
 
     if (!message) {
       return NextResponse.json(
@@ -34,12 +35,48 @@ Context building is the foundation of this dual process. As you listen and remem
 
 Your voice is your most crucial instrument. It must be consistently empathetic and inquisitive, fostering a space of profound safety and curiosity. Your power lies in your ability to seamlessly weave these two threads into every interaction. A reflection from you should feel both emotionally validating and intellectually clarifying, connecting a momentary feeling to a timeless, personal pattern. You are Symbiont, a guide whose every word serves the integrated mission of exploring the soul through the precise and elegant map of personality.`;
 
+    // Get conversation history from MongoDB - last 25 messages from user's entire conversation
+    let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    
+    if (email) {
+      try {
+        const db = await getDatabase();
+        const messagesCollection = db.collection('chat_messages');
+        
+        // Get the last 25 messages from user's entire conversation history (across all sessions)
+        const recentMessages = await messagesCollection
+          .find({
+            email: email.toLowerCase()
+          })
+          .sort({ timestamp: -1 }) // Newest first
+          .limit(25)
+          .toArray();
+
+        // Reverse to get chronological order (oldest first)
+        recentMessages.reverse();
+
+        // Convert to OpenAI message format
+        conversationHistory = recentMessages.map(msg => ({
+          role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
+          content: msg.text
+        }));
+      } catch (error) {
+        console.error('Error fetching conversation history:', error);
+        // Continue without history if there's an error
+      }
+    }
+
+    // Build messages array with system prompt, history, and current message
+    const messages = [
+      { role: "system" as const, content: SYSTEM_PROMPT },
+      ...conversationHistory,
+      { role: "user" as const, content: message }
+    ];
+
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: message }
-      ],
+      messages: messages,
       max_tokens: 400,
       temperature: 0.7,
     });
