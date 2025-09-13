@@ -64,9 +64,69 @@ export default function ChatPage() {
     setMessages(prev => [...prev, newMessage]);
   }, [currentSession?.id]);
 
+  // Function to verify message was saved
+  const verifyMessageSaved = useCallback(async (messageText: string, sender: 'user' | 'ai', messageId?: string) => {
+    if (!userEmail) return false;
+    
+    try {
+      // Check the most recent 200 messages to increase chances of finding the new message
+      const response = await fetch(`/api/chat/get-messages?email=${encodeURIComponent(userEmail)}&limit=200`);
+      const result = await response.json();
+      
+      if (result.success) {
+        const recentMessages = result.messages;
+        console.log(`Verification: Checking ${recentMessages.length} recent messages for: "${messageText.substring(0, 30)}..." (sender: ${sender}, ID: ${messageId})`);
+        
+        // First try to find by message ID if provided
+        if (messageId) {
+          const foundById = recentMessages.some((msg: any) => {
+            // Try both string comparison and ObjectId comparison
+            const idMatch = msg.id === messageId || msg.id === messageId.toString();
+            if (idMatch) {
+              console.log(`✅ Message verification: FOUND by ID - "${messageText.substring(0, 30)}..." (ID: ${messageId})`);
+              return true;
+            }
+            return false;
+          });
+          if (foundById) {
+            return true;
+          } else {
+            console.log(`❌ Message ID ${messageId} not found in recent messages`);
+            console.log('Available message IDs:', recentMessages.map((msg: any) => msg.id).slice(0, 5));
+          }
+        }
+        
+        // Fallback to text and sender matching
+        const found = recentMessages.some((msg: any) => {
+          const textMatch = msg.text === messageText;
+          const senderMatch = msg.sender === sender;
+          if (textMatch && senderMatch) {
+            console.log(`✅ Message verification: FOUND by text/sender - "${messageText.substring(0, 30)}..." (ID: ${msg.id})`);
+            return true;
+          }
+          return false;
+        });
+        
+        if (!found) {
+          console.log(`❌ Message verification: NOT FOUND - "${messageText.substring(0, 30)}..." (checked ${recentMessages.length} recent messages)`);
+          console.log('Recent message IDs:', recentMessages.map((msg: any) => msg.id).slice(0, 5));
+        }
+        return found;
+      }
+    } catch (error) {
+      console.error('Error verifying message:', error);
+    }
+    return false;
+  }, [userEmail]);
+
   // Function to save message to database
   const saveMessageToDB = useCallback(async (text: string, sender: 'user' | 'ai') => {
-    if (!userEmail) return null;
+    if (!userEmail) {
+      console.error('No user email available for saving message');
+      return null;
+    }
+
+    console.log(`Saving message to DB: ${sender} - "${text.substring(0, 50)}..."`);
 
     try {
       const response = await fetch('/api/chat/save-message', {
@@ -82,11 +142,30 @@ export default function ChatPage() {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
       
       if (result.success) {
+        console.log(`Message saved successfully: ${result.messageId}`);
+        
+        // Verify the message was actually saved (with longer delay for database consistency)
+        setTimeout(async () => {
+          const verified = await verifyMessageSaved(text, sender, result.messageId);
+          if (!verified) {
+            console.error('WARNING: Message was not found in database after saving!');
+            console.error('Message details:', { text: text.substring(0, 50), sender, messageId: result.messageId });
+            console.error('This might be due to database replication delay or the message being outside the recent message range.');
+          } else {
+            console.log('✅ Message verification successful!');
+          }
+        }, 2000);
+        
         // Update current session if we get one back
         if (result.sessionId && result.sessionId !== currentSession?.id) {
+          console.log(`Session updated: ${result.sessionId}`);
           // Fetch the updated session info
           const sessionResponse = await fetch(`/api/chat/get-latest-session?email=${encodeURIComponent(userEmail)}`);
           const sessionResult = await sessionResponse.json();
@@ -95,14 +174,15 @@ export default function ChatPage() {
           }
         }
         return result;
+      } else {
+        console.error('Failed to save message:', result.error);
+        return null;
       }
-      
-      return null;
     } catch (error) {
       console.error('Error saving message:', error);
       return null;
     }
-  }, [userEmail, currentSession?.id]);
+  }, [userEmail, currentSession?.id, verifyMessageSaved]);
 
   // Function to load messages from database
   const loadMessagesFromDB = useCallback(async (sessionId?: string) => {
@@ -110,10 +190,16 @@ export default function ChatPage() {
 
     setIsLoadingHistory(true);
     setLoadingMessage('Retrieving your conversation history...');
+    setError(''); // Clear any previous errors
 
     try {
       const targetSessionId = sessionId || currentSession?.id;
-      const response = await fetch(`/api/chat/get-messages?email=${encodeURIComponent(userEmail)}&sessionId=${targetSessionId || ''}&limit=50`);
+      const response = await fetch(`/api/chat/get-messages?email=${encodeURIComponent(userEmail)}&sessionId=${targetSessionId || ''}&limit=100`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const result = await response.json();
       
       if (result.success) {
@@ -121,16 +207,20 @@ export default function ChatPage() {
           ...msg,
           timestamp: new Date(msg.timestamp)
         }));
+        
+        console.log(`Loaded ${loadedMessages.length} messages from database for ${userEmail}`);
         setMessages(loadedMessages);
         
         // Update session info if provided
         if (result.sessionInfo) {
           setCurrentSession(result.sessionInfo);
         }
+      } else {
+        throw new Error(result.error || 'Failed to load messages');
       }
     } catch (error) {
       console.error('Error loading messages:', error);
-      setError('Failed to load messages');
+      setError('Failed to load conversation history. Please refresh the page.');
     } finally {
       setIsLoadingHistory(false);
       setLoadingMessage('');
@@ -183,6 +273,7 @@ export default function ChatPage() {
   // Function to get AI response from OpenAI
   const getAIResponse = async (userMessage: string) => {
     setIsLoading(true);
+    console.log(`Getting AI response for: "${userMessage.substring(0, 50)}..."`);
     
     try {
       const response = await fetch('/api/chat/ai-response', {
@@ -197,12 +288,23 @@ export default function ChatPage() {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
       
       if (result.success) {
+        console.log(`AI response received: "${result.response.substring(0, 50)}..."`);
         addMessage(result.response, 'ai');
-        await saveMessageToDB(result.response, 'ai');
+        
+        // Save AI response to database
+        const saveResult = await saveMessageToDB(result.response, 'ai');
+        if (!saveResult) {
+          console.error('Failed to save AI response to database');
+        }
       } else {
+        console.error('AI response failed:', result.error);
         // Fallback to mock response if AI fails
         const fallbackResponse = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
         addMessage(fallbackResponse, 'ai');
@@ -252,43 +354,100 @@ export default function ChatPage() {
     const userMessage = inputValue.trim();
 
     if (userMessage && !isLoading && userEmail) {
+      console.log(`Form submitted with message: "${userMessage}"`);
+      
       // Add message to UI immediately
       addMessage(userMessage, 'user');
       setInputValue('');
       
-      // Save user message to database
-      await saveMessageToDB(userMessage, 'user');
-      
-      // Get AI response
-      await getAIResponse(userMessage);
+      try {
+        // Save user message to database
+        const saveResult = await saveMessageToDB(userMessage, 'user');
+        if (!saveResult) {
+          console.error('Failed to save user message to database');
+          setError('Failed to save your message. Please try again.');
+          return;
+        }
+        
+        // Get AI response
+        await getAIResponse(userMessage);
+      } catch (error) {
+        console.error('Error in form submission:', error);
+        setError('An error occurred. Please try again.');
+      }
     }
   };
+
+  // Function to refresh conversation history
+  const refreshConversationHistory = useCallback(async () => {
+    if (userEmail) {
+      await loadMessagesFromDB();
+    }
+  }, [userEmail, loadMessagesFromDB]);
+
+  // Function to cleanup old messages
+  const cleanupOldMessages = useCallback(async () => {
+    if (!userEmail) return;
+    
+    try {
+      const response = await fetch('/api/chat/cleanup-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: userEmail,
+          sessionId: currentSession?.id,
+          maxMessages: 100
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log(`Cleanup result: ${result.message}`);
+        if (result.deletedCount > 0) {
+          // Reload messages after cleanup
+          await loadMessagesFromDB();
+        }
+      }
+    } catch (error) {
+      console.error('Error cleaning up messages:', error);
+    }
+  }, [userEmail, loadMessagesFromDB]);
 
   // Initialize chat - get user email and load messages
   useEffect(() => {
     const initializeChat = async () => {
       setIsLoadingHistory(true);
       setLoadingMessage('Initializing your chat session...');
+      setError(''); // Clear any previous errors
       
       try {
         const email = await getUserEmail();
         if (email) {
+          console.log(`Initializing chat for user: ${email}`);
+          
           // Get or create latest session
           const session = await getOrCreateLatestSession(email);
           
           if (session) {
             // Load messages for existing session
+            console.log(`Loading messages for session: ${session.id}`);
             await loadMessagesFromDB(session.id);
           } else {
             // No existing session, show welcome message
+            console.log('No existing session found, showing welcome message');
             const welcomeMessage = "Hello! I'm your personal MBTI Symbiont. I'm here to help you understand yourself better. What's on your mind today?";
             addMessage(welcomeMessage, 'ai');
             // Don't save welcome message to DB yet - wait for first user message
           }
+        } else {
+          setError('Unable to authenticate user. Please log in again.');
         }
       } catch (error) {
         console.error('Error initializing chat:', error);
-        setError('Failed to initialize chat');
+        setError('Failed to initialize chat. Please refresh the page.');
       } finally {
         setIsLoadingHistory(false);
         setLoadingMessage('');
@@ -326,11 +485,56 @@ export default function ChatPage() {
           <div className="text-lg sm:text-xl font-extrabold text-white tracking-tight uppercase bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
             Symbiont AI
           </div>
-          {currentSession && (
-            <div className="text-xs text-gray-400">
-              Session: {currentSession.messageCount} messages
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {currentSession && (
+              <div className="text-xs text-gray-400">
+                Session: {currentSession.messageCount} messages
+              </div>
+            )}
+            <button
+              onClick={refreshConversationHistory}
+              disabled={isLoadingHistory}
+              className="text-xs text-gray-400 hover:text-white transition-colors duration-200 disabled:opacity-50"
+              title="Refresh conversation history"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className={`w-4 h-4 ${isLoadingHistory ? 'animate-spin' : ''}`}
+              >
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="m3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </button>
+            <button
+              onClick={cleanupOldMessages}
+              disabled={isLoadingHistory}
+              className="text-xs text-gray-400 hover:text-white transition-colors duration-200 disabled:opacity-50"
+              title="Cleanup old messages (keep last 100 per session)"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className="w-4 h-4"
+              >
+                <polyline points="3,6 5,6 21,6"></polyline>
+                <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+              </svg>
+            </button>
+          </div>
         </div>
       </nav>
 

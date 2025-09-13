@@ -16,13 +16,12 @@ export async function GET(request: NextRequest) {
     const db = await getDatabase();
     const sessionsCollection = db.collection('chat_sessions');
 
-    // Get the latest active session for the email
+    // Get the user's persistent session (the first one created)
     const session = await sessionsCollection.findOne(
       { 
-        email: email.toLowerCase(),
-        status: 'active'
+        email: email.toLowerCase()
       },
-      { sort: { lastMessageAt: -1 } }
+      { sort: { createdAt: 1 } } // Get the oldest session (first one created)
     );
 
     if (!session) {

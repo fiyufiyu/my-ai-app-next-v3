@@ -26,17 +26,22 @@ export async function POST(request: NextRequest) {
 
     let sessionId = chatSessionId;
 
-    // If no session ID provided, check for existing active session first
+    // If no session ID provided, find or create the user's persistent session
     if (!sessionId) {
+      // Look for ANY existing session for this email (not just active ones)
       const existingSession = await sessionsCollection.findOne({
-        email: email.toLowerCase(),
-        status: 'active'
-      }, { sort: { lastMessageAt: -1 } });
+        email: email.toLowerCase()
+      }, { sort: { createdAt: 1 } }); // Get the oldest session (first one created)
       
       if (existingSession) {
+        // Use the existing session and ensure it's active
         sessionId = existingSession._id.toString();
+        await sessionsCollection.updateOne(
+          { _id: existingSession._id },
+          { $set: { status: 'active' } }
+        );
       } else {
-        // Create a new chat session only if no active session exists
+        // Create a new persistent session only if none exists
         const newSession = await sessionsCollection.insertOne({
           email: email.toLowerCase(),
           createdAt: new Date(),
@@ -73,11 +78,38 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    console.log('Message saved:', result.insertedId, 'for session:', sessionId);
+    // Check if we need to cleanup old messages for this session (keep only the most recent 100 per session)
+    const sessionMessageCount = await messagesCollection.countDocuments({
+      sessionId: sessionId
+    });
+
+    if (sessionMessageCount > 100) {
+      console.log(`Session ${sessionId} has ${sessionMessageCount} messages, triggering cleanup...`);
+      
+      // Delete oldest messages to keep only the most recent 100 for this session
+      const messagesToDelete = sessionMessageCount - 100;
+      const oldestMessages = await messagesCollection
+        .find({
+          sessionId: sessionId
+        })
+        .sort({ timestamp: 1 }) // Oldest first
+        .limit(messagesToDelete)
+        .toArray();
+
+      if (oldestMessages.length > 0) {
+        const messageIds = oldestMessages.map(msg => msg._id);
+        const deleteResult = await messagesCollection.deleteMany({
+          _id: { $in: messageIds }
+        });
+        console.log(`Cleaned up ${deleteResult.deletedCount} old messages for session ${sessionId}`);
+      }
+    }
+
+    console.log('Message saved:', result.insertedId, 'for session:', sessionId, 'email:', email.toLowerCase(), 'sender:', sender);
 
     return NextResponse.json({
       success: true,
-      messageId: result.insertedId,
+      messageId: result.insertedId.toString(),
       sessionId,
       message: 'Message saved successfully'
     });

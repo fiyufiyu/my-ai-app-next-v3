@@ -20,17 +20,22 @@ export async function GET(request: NextRequest) {
 
     const query: Record<string, unknown> = { email: email.toLowerCase() };
     
-    // If sessionId is provided, get messages for that specific session
+    // Filter by sessionId if provided, otherwise get all messages for the user
     if (sessionId) {
       query.sessionId = sessionId;
+      console.log(`Loading messages for session ${sessionId} for ${email}, limit: ${limit}`);
+    } else {
+      console.log(`Loading ALL conversation history for ${email}, limit: ${limit}`);
     }
 
     // Get messages sorted by timestamp, with limit
     const messages = await messagesCollection
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ timestamp: 1 }) // Oldest first for proper conversation flow
       .limit(limit)
       .toArray();
+
+    console.log(`Found ${messages.length} messages for ${email}`);
 
     // Transform messages to match frontend format
     const formattedMessages = messages.map(msg => ({
