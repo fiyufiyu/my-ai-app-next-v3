@@ -71,7 +71,7 @@ CRITICAL: Keep every response between 30-100 words. Be concise yet complete. Cho
     
     if (conversationHistory.length > 0) {
       contextInput += "Previous conversation history (this is our ongoing therapeutic dialogue):\n";
-      conversationHistory.forEach((msg, index) => {
+      conversationHistory.forEach((msg) => {
         const roleLabel = msg.role === 'user' ? 'User' : 'Symbiont';
         contextInput += `${roleLabel}: ${msg.content}\n`;
       });

@@ -79,7 +79,7 @@ export default function ChatPage() {
         
         // First try to find by message ID if provided
         if (messageId) {
-          const foundById = recentMessages.some((msg: any) => {
+          const foundById = recentMessages.some((msg: { id: string | number; text: string; sender: string }) => {
             // Try both string comparison and ObjectId comparison
             const idMatch = msg.id === messageId || msg.id === messageId.toString();
             if (idMatch) {
@@ -92,12 +92,12 @@ export default function ChatPage() {
             return true;
           } else {
             console.log(`❌ Message ID ${messageId} not found in recent messages`);
-            console.log('Available message IDs:', recentMessages.map((msg: any) => msg.id).slice(0, 5));
+            console.log('Available message IDs:', recentMessages.map((msg: { id: string | number }) => msg.id).slice(0, 5));
           }
         }
         
         // Fallback to text and sender matching
-        const found = recentMessages.some((msg: any) => {
+        const found = recentMessages.some((msg: { id: string | number; text: string; sender: string }) => {
           const textMatch = msg.text === messageText;
           const senderMatch = msg.sender === sender;
           if (textMatch && senderMatch) {
@@ -109,7 +109,7 @@ export default function ChatPage() {
         
         if (!found) {
           console.log(`❌ Message verification: NOT FOUND - "${messageText.substring(0, 30)}..." (checked ${recentMessages.length} recent messages)`);
-          console.log('Recent message IDs:', recentMessages.map((msg: any) => msg.id).slice(0, 5));
+          console.log('Recent message IDs:', recentMessages.map((msg: { id: string | number }) => msg.id).slice(0, 5));
         }
         return found;
       }
@@ -414,7 +414,7 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Error cleaning up messages:', error);
     }
-  }, [userEmail, loadMessagesFromDB]);
+  }, [userEmail, currentSession?.id, loadMessagesFromDB]);
 
   // Initialize chat - get user email and load messages
   useEffect(() => {
